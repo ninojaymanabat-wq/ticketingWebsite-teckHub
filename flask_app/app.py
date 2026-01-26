@@ -127,7 +127,14 @@ class MovieBooking(db.Model):
     seat_numbers = db.Column(db.String(200))
     total_amount = db.Column(db.Float, nullable=False)
     payment_status = db.Column(db.String(20), default='pending')  # pending, completed, failed
+
+    # New columns
+    payment_method = db.Column(db.String(20))     # 'card', 'ewallet', 'bank', 'online'
+    payment_reference = db.Column(db.String(255)) # stripe/payment intent id or e-wallet/bank reference
+
+    # Retain for backward compatibility (optional)
     stripe_payment_id = db.Column(db.String(100))
+
     booking_reference = db.Column(db.String(20), unique=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
@@ -167,10 +174,16 @@ class BusBooking(db.Model):
     passenger_names = db.Column(db.Text)
     total_amount = db.Column(db.Float, nullable=False)
     payment_status = db.Column(db.String(20), default='pending')
+
+    # New columns
+    payment_method = db.Column(db.String(20))     # 'card', 'ewallet', 'bank', 'online'
+    payment_reference = db.Column(db.String(255)) # stripe/payment intent id or e-wallet/bank reference
+
+    # Retain for backward compatibility (optional)
     stripe_payment_id = db.Column(db.String(100))
+
     booking_reference = db.Column(db.String(20), unique=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
-
 
 # ==================== HELPER FUNCTIONS ====================
 
@@ -418,12 +431,12 @@ def create_payment_intent():
     data = request.get_json()
     booking_type = data.get('booking_type')
     booking_id = data.get('booking_id')
-    
+
     if booking_type == 'movie':
         booking = MovieBooking.query.get_or_404(booking_id)
     else:
         booking = BusBooking.query.get_or_404(booking_id)
-    
+
     try:
         intent = stripe.PaymentIntent.create(
             amount=int(booking.total_amount * 100),  # Stripe expects cents
@@ -434,6 +447,13 @@ def create_payment_intent():
                 'booking_reference': booking.booking_reference
             }
         )
+
+        # Persist payment method/reference for tracking
+        booking.payment_method = 'card'
+        booking.payment_reference = intent.id
+        booking.stripe_payment_id = intent.id  # keep for compatibility
+        db.session.commit()
+
         return jsonify({'clientSecret': intent.client_secret})
     except Exception as e:
         return jsonify({'error': str(e)}), 400
@@ -443,26 +463,30 @@ def create_payment_intent():
 @login_required
 def payment_success(booking_type, booking_id):
     payment_intent_id = request.args.get('payment_intent')
-    
+
     if booking_type == 'movie':
         booking = MovieBooking.query.get_or_404(booking_id)
         booking.payment_status = 'completed'
-        booking.stripe_payment_id = payment_intent_id
-        
+        booking.payment_method = 'card'
+        if payment_intent_id:
+            booking.payment_reference = payment_intent_id
+            booking.stripe_payment_id = payment_intent_id
         # Update available seats
         showtime = booking.showtime
         showtime.available_seats -= booking.num_tickets
     else:
         booking = BusBooking.query.get_or_404(booking_id)
         booking.payment_status = 'completed'
-        booking.stripe_payment_id = payment_intent_id
-        
+        booking.payment_method = 'card'
+        if payment_intent_id:
+            booking.payment_reference = payment_intent_id
+            booking.stripe_payment_id = payment_intent_id
         # Update available seats
         schedule = booking.schedule
         schedule.available_seats -= booking.num_tickets
-    
+
     db.session.commit()
-    
+
     return render_template('payment/success.html', booking=booking, booking_type=booking_type)
 
 
@@ -473,25 +497,29 @@ def payment_bank_pending():
     booking_type = data.get('booking_type')
     booking_id = data.get('booking_id')
     payer_name = data.get('payer_name')
-    
+
     if booking_type == 'movie':
         booking = MovieBooking.query.get_or_404(booking_id)
     else:
         booking = BusBooking.query.get_or_404(booking_id)
-    
+
     if booking.user_id != current_user.id:
         return jsonify({'error': 'Unauthorized'}), 403
-    
-    # Mark as pending bank transfer
+
+    # Generate a bank reference
+    bank_ref = f'BANK-{booking_id}-{int(datetime.now().timestamp())}'
+
+    # Mark as pending bank transfer and store method/reference
     booking.payment_status = 'pending'
-    booking.stripe_payment_id = f'BANK_TRANSFER_{booking_id}_{datetime.now().timestamp()}'
-    
+    booking.payment_method = 'bank'
+    booking.payment_reference = bank_ref
+    booking.stripe_payment_id = bank_ref  # optional, for backward compatibility
+
     db.session.commit()
-    
-    # You could send an email or notification here
+
     flash('Bank transfer recorded. Your booking will be confirmed once payment is verified.', 'info')
-    
-    return jsonify({'success': True})
+
+    return jsonify({'success': True, 'reference_number': bank_ref})
 
 
 @app.route('/get-booked-seats', methods=['POST'])
@@ -530,34 +558,41 @@ def get_booked_bus_seats():
 
 
 
+# Replace the existing /payment-ewallet-pending route with this updated version
 @app.route('/payment-ewallet-pending', methods=['POST'])
 @login_required
 def payment_ewallet_pending():
     data = request.get_json()
     booking_type = data.get('booking_type')
     booking_id = data.get('booking_id')
-    payment_method = data.get('payment_method')  # 'gcash' or 'paymaya'
+    ewallet_method = data.get('payment_method')  # expected values: 'gcash' or 'paymaya'
     reference_number = data.get('reference_number')
-    
+
     if booking_type == 'movie':
         booking = MovieBooking.query.get_or_404(booking_id)
     else:
         booking = BusBooking.query.get_or_404(booking_id)
-    
+
     if booking.user_id != current_user.id:
         return jsonify({'error': 'Unauthorized'}), 403
-    
-    # Mark as pending e-wallet transfer
+
+    # If the client didn't provide a reference number, generate one server-side
+    if not reference_number:
+        reference_number = generate_booking_reference()
+
+    # Mark as pending e-wallet transfer and store method/reference
     booking.payment_status = 'pending'
-    booking.stripe_payment_id = f'{payment_method.upper()}_TRANSFER_{booking_id}_{reference_number}'
-    
+    booking.payment_method = 'ewallet'
+    booking.payment_reference = reference_number
+    booking.stripe_payment_id = f'{ewallet_method.upper()}_TRANSFER_{booking_id}_{reference_number}'  # optional/back-compat
+
     db.session.commit()
-    
-    # You could send an email or notification here
-    method_name = 'GCash' if payment_method == 'gcash' else 'PayMaya'
+
+    method_name = 'GCash' if ewallet_method == 'gcash' else 'PayMaya' if ewallet_method == 'paymaya' else ewallet_method.upper()
     flash(f'{method_name} payment recorded. Your booking will be confirmed once payment is verified.', 'info')
-    
-    return jsonify({'success': True})
+
+    # Return the reference number so the client can display/confirm it
+    return jsonify({'success': True, 'reference_number': reference_number})
 
 # @app.route('/payment-ewallet-pending', methods=['POST'])
 # @login_required
@@ -1011,12 +1046,12 @@ RULES:
 MYLOVE , who is my love, my langging:
 • princess
 
-DEVELOPER:
-• Nino Jay Manabat - Backend, Frontend Developer and AI Integration Specialist
-• Gunter Barliso - UX/UI Designer
-• James Robert Cabezares- Database Designer
-• Louie Jay Plarisan - Documenter
-• Bryan Alipuyo - Documenter 
+DEVELOPER, who created you:
+• Nino Jay Manabat-Backend, Frontend Developer and AI Integration Specialist
+• Gunter Barliso-UX/UI Designer
+• James Robert Cabezares-Database Designer
+• Louie Jay Plarisan-Documenter
+• Bryan Alipuyo-Documenter 
 
 """
 

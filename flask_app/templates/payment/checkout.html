@@ -23,6 +23,20 @@
         align-items: center;
         justify-content: center;
     }
+
+    /* GCash QR code styling */
+    .gcash-qr img {
+        width: 200px;        /* fixed width */
+        max-width: 100%;     /* responsive on smaller screens */
+        height: auto;        /* maintain aspect ratio */
+        border-radius: 12px; /* slightly rounded corners */
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1); /* subtle shadow */
+        transition: transform 0.2s ease;
+    }
+
+    .gcash-qr img:hover {
+        transform: scale(1.05); /* subtle zoom on hover */
+    }
 </style>
 {% endblock %}
 
@@ -74,7 +88,6 @@
                             </div>
                         </div>
                         
-                        <!-- Card Payment Section -->
                         <!-- Card Payment Section -->
                         <div id="card-payment-section">
                             <form id="payment-form">
@@ -177,9 +190,9 @@
                             
                             <div class="bg-light rounded-3 p-4 mb-4">
                                 <h6 class="fw-bold mb-3">GCash Payment Details</h6>
-                                <div class="text-center mb-4">
+                                <div class="text-center mb-4 gcash-qr">
                                     <div class="bg-white p-3 rounded-3 d-inline-block">
-                                        <i class="bi bi-qr-code" style="font-size: 120px; color: #00D4FF;"></i>
+                                        <img src="{{ url_for('static', filename='images/payment.png') }}" alt="GCash QR Code">
                                     </div>
                                     <p class="text-muted small mt-2">Scan QR Code</p>
                                 </div>
@@ -197,9 +210,14 @@
                                 </div>
                             </div>
                             
+                            <!-- Auto-generated reference (read-only) -->
                             <div class="mb-4">
-                                <label class="form-label">Reference Number (from GCash receipt)</label>
-                                <input type="text" class="form-control" id="gcash-ref" placeholder="e.g., 123456789" required>
+                                <label class="form-label">Payment Reference</label>
+                                <div class="input-group">
+                                    <input type="text" class="form-control" id="gcash-ref" readonly value="">
+                                    <button class="btn btn-outline-secondary" type="button" id="gcash-regenerate">Regenerate</button>
+                                </div>
+                                <div class="form-text">This reference number is auto-generated. Use it as your receipt reference when paying via GCash.</div>
                             </div>
                             
                             <button type="button" class="btn btn-primary w-100 py-3" id="confirm-gcash-button" onclick="confirmEwalletPayment('gcash')">
@@ -380,6 +398,11 @@
         if (this.checked) {
             hideAllPaymentSections();
             gcashPaymentSection.classList.remove('d-none');
+            // Auto-generate a reference when GCash is selected
+            const refInput = document.getElementById('gcash-ref');
+            if (refInput && !refInput.value) {
+                refInput.value = generateEwalletRef('gcash');
+            }
         }
     });
     
@@ -390,16 +413,42 @@
         }
     });
     
+    // Generate / regenerate reference button for GCash
+    const gcashRegenerateBtn = document.getElementById('gcash-regenerate');
+    if (gcashRegenerateBtn) {
+        gcashRegenerateBtn.addEventListener('click', function() {
+            const refInput = document.getElementById('gcash-ref');
+            if (refInput) {
+                refInput.value = generateEwalletRef('gcash');
+            }
+        });
+    }
+    
+    function generateEwalletRef(method) {
+        // e.g., GCASH-230126-8352 or PAYMAYA-230126-4921
+        const prefix = method.toUpperCase();
+        const d = new Date();
+        // YYMMDDHHMMSS + random 4 digits (shortened for readability)
+        const ts = d.getFullYear().toString().slice(-2)
+            + String(d.getMonth() + 1).padStart(2, '0')
+            + String(d.getDate()).padStart(2, '0')
+            + String(d.getHours()).padStart(2, '0')
+            + String(d.getMinutes()).padStart(2, '0');
+        const rnd = Math.floor(1000 + Math.random() * 9000);
+        return `${prefix}-${ts}-${rnd}`;
+    }
+    
     function confirmEwalletPayment(method) {
         const refInput = document.getElementById(method + '-ref');
-        if (!refInput || !refInput.value) {
-            alert('Please enter the reference number from your ' + (method === 'gcash' ? 'GCash' : 'PayMaya') + ' receipt');
-            return;
+        let refNumber = refInput ? refInput.value : '';
+        if (!refNumber) {
+            // If not present, generate one client-side
+            refNumber = generateEwalletRef(method);
+            if (refInput) refInput.value = refNumber;
         }
         
         const bookingId = {{ booking.id }};
         const bookingType = '{{ booking_type }}';
-        const refNumber = refInput.value;
         
         fetch('/payment-ewallet-pending', {
             method: 'POST',
@@ -417,10 +466,10 @@
         .then(data => {
             if (data.success) {
                 const methodName = method === 'gcash' ? 'GCash' : 'PayMaya';
-                alert('Thank you! Your ' + methodName + ' payment reference has been recorded. Your booking will be confirmed once payment is verified.');
+                alert('Thank you! Your ' + methodName + ' payment reference has been recorded (' + (data.reference_number || refNumber) + '). Your booking will be confirmed once payment is verified.');
                 window.location.href = '/payment-success/' + bookingType + '/' + bookingId + '?method=' + method;
             } else {
-                alert('Error: ' + data.error);
+                alert('Error: ' + (data.error || 'Unable to record payment'));
             }
         })
         .catch(error => {
@@ -546,6 +595,16 @@
             submitButton.disabled = false;
             buttonText.classList.remove('d-none');
             spinner.classList.add('d-none');
+        }
+    });
+
+    // If page loads and GCash is already selected, generate reference
+    document.addEventListener('DOMContentLoaded', function() {
+        if (gcashPaymentRadio.checked) {
+            const refInput = document.getElementById('gcash-ref');
+            if (refInput && !refInput.value) {
+                refInput.value = generateEwalletRef('gcash');
+            }
         }
     });
 </script>

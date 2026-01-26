@@ -48,7 +48,7 @@
                             <label class="form-label fw-semibold">Rating</label>
                             <select class="form-select" name="rating">
                                 <option value="">Select rating</option>
-                                {% for r in ['G', 'PG', 'PG-13', 'R', 'NC-17'] %}
+                                {% for r in ['G', 'PG', 'SPG', 'R', 'NC-17'] %}
                                     <option value="{{ r }}" {{ 'selected' if movie.rating == r }}>{{ r }}</option>
                                 {% endfor %}
                             </select>
