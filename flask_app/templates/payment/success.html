@@ -2,101 +2,434 @@
 
 {% block title %}Payment Successful - TicketHub{% endblock %}
 
+{% block extra_css %}
+<style>
+    :root {
+        --primary: #E50914;
+        --secondary: #221f1f;
+        --light: #f5f5f1;
+        --dark: #000;
+        --gray-200: #e5e7eb;
+        --gray-600: #4b5563;
+    }
+
+    .success-container {
+        background: linear-gradient(135deg, var(--dark) 0%, #1a1a1a 100%);
+        min-height: 100vh;
+        padding: 40px 20px;
+    }
+
+    .success-card {
+        background: white;
+        border-radius: 16px;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        overflow: hidden;
+        max-width: 600px;
+        margin: 0 auto;
+    }
+
+    .success-header {
+        background: linear-gradient(135deg, #4caf50 0%, #388e3c 100%);
+        color: white;
+        padding: 40px;
+        text-align: center;
+    }
+
+    .success-icon {
+        width: 80px;
+        height: 80px;
+        background: rgba(255, 255, 255, 0.2);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 48px;
+        margin: 0 auto 20px;
+    }
+
+    .success-header h1 {
+        font-size: 32px;
+        font-weight: bold;
+        margin: 0 0 10px 0;
+    }
+
+    .success-header p {
+        margin: 0;
+        opacity: 0.9;
+    }
+
+    .receipt-body {
+        padding: 40px;
+    }
+
+    .receipt-section {
+        margin-bottom: 30px;
+    }
+
+    .receipt-section:last-child {
+        margin-bottom: 0;
+    }
+
+    .receipt-title {
+        font-weight: 600;
+        font-size: 14px;
+        color: var(--gray-600);
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        margin-bottom: 16px;
+    }
+
+    .receipt-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 12px 0;
+        border-bottom: 1px solid var(--gray-200);
+    }
+
+    .receipt-item:last-child {
+        border-bottom: none;
+    }
+
+    .receipt-label {
+        font-size: 14px;
+        color: var(--gray-600);
+    }
+
+    .receipt-value {
+        font-weight: 600;
+        color: var(--secondary);
+        text-align: right;
+    }
+
+    .receipt-amount {
+        font-size: 24px;
+        color: var(--primary);
+    }
+
+    .divider {
+        height: 2px;
+        background: linear-gradient(90deg, transparent, var(--gray-200), transparent);
+        margin: 20px 0;
+    }
+
+    .booking-details {
+        background: var(--light);
+        border-radius: 12px;
+        padding: 20px;
+        margin-bottom: 20px;
+    }
+
+    .detail-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+    }
+
+    @media (max-width: 600px) {
+        .detail-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+
+    .detail-item {
+        padding: 12px;
+        background: white;
+        border-radius: 8px;
+    }
+
+    .detail-label {
+        font-size: 12px;
+        color: var(--gray-600);
+        text-transform: uppercase;
+        margin-bottom: 6px;
+        display: block;
+    }
+
+    .detail-value {
+        font-weight: 600;
+        font-size: 14px;
+        color: var(--secondary);
+    }
+
+    .movie-details {
+        display: flex;
+        gap: 16px;
+        margin-bottom: 20px;
+    }
+
+    .movie-poster {
+        width: 100px;
+        height: 140px;
+        background: var(--gray-200);
+        border-radius: 8px;
+        object-fit: cover;
+        flex-shrink: 0;
+    }
+
+    .movie-info h4 {
+        font-weight: 600;
+        margin: 0 0 8px 0;
+        font-size: 16px;
+    }
+
+    .movie-info p {
+        margin: 4px 0;
+        font-size: 13px;
+        color: var(--gray-600);
+    }
+
+    .action-buttons {
+        display: flex;
+        gap: 12px;
+        margin-top: 30px;
+    }
+
+    .btn {
+        flex: 1;
+        padding: 14px;
+        border: none;
+        border-radius: 8px;
+        font-weight: 600;
+        font-size: 14px;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+    }
+
+    .btn-primary {
+        background: linear-gradient(135deg, var(--primary) 0%, #cc0000 100%);
+        color: white;
+    }
+
+    .btn-primary:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 10px 25px rgba(229, 9, 20, 0.3);
+    }
+
+    .btn-secondary {
+        background: var(--light);
+        color: var(--secondary);
+        border: 2px solid var(--gray-200);
+    }
+
+    .btn-secondary:hover {
+        background: var(--gray-200);
+        border-color: var(--gray-600);
+    }
+
+    .print-btn {
+        background: none;
+        color: var(--gray-600);
+        border: none;
+        text-decoration: underline;
+        cursor: pointer;
+        font-size: 13px;
+        padding: 8px;
+        margin-top: 16px;
+    }
+
+    .print-btn:hover {
+        color: var(--secondary);
+    }
+
+    .status-badge {
+        display: inline-block;
+        background: #e8f5e9;
+        color: #2e7d32;
+        padding: 6px 12px;
+        border-radius: 20px;
+        font-size: 12px;
+        font-weight: 600;
+    }
+
+    .qr-section {
+        text-align: center;
+        background: var(--light);
+        border-radius: 12px;
+        padding: 20px;
+        margin-bottom: 20px;
+    }
+
+    .qr-code {
+        width: 150px;
+        height: 150px;
+        background: white;
+        border: 2px solid var(--gray-200);
+        border-radius: 8px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        margin-bottom: 12px;
+        font-size: 12px;
+        color: var(--gray-600);
+    }
+
+    @media print {
+        .action-buttons,
+        .print-btn,
+        .success-container {
+            display: none;
+        }
+
+        .success-card {
+            box-shadow: none;
+            background: white;
+        }
+    }
+</style>
+{% endblock %}
+
 {% block content %}
-<section class="py-5">
+<div class="success-container">
     <div class="container">
-        <div class="row justify-content-center">
-            <div class="col-lg-6">
-                <div class="card text-center">
-                    <div class="card-body p-5">
-                        <!-- Success Animation -->
-                        <div class="mb-4">
-                            <div class="d-inline-flex align-items-center justify-content-center rounded-circle" 
-                                 style="width: 100px; height: 100px; background: rgba(34, 197, 94, 0.1);">
-                                <i class="bi bi-check-lg text-success" style="font-size: 3rem;"></i>
-                            </div>
-                        </div>
-                        
-                        <h2 class="fw-bold mb-3">Payment Successful!</h2>
-                        <p class="text-muted mb-4">Your booking has been confirmed. A confirmation email has been sent to your registered email address.</p>
-                        
-                        <!-- Booking Details -->
-                        <div class="bg-light rounded-3 p-4 text-start mb-4">
-                            <div class="d-flex justify-content-between mb-3">
-                                <span class="text-muted">Booking Reference</span>
-                                <span class="fw-bold">{{ booking.booking_reference }}</span>
-                            </div>
-                            
-                            {% if booking_type == 'movie' %}
-                                <div class="d-flex justify-content-between mb-3">
-                                    <span class="text-muted">Movie</span>
-                                    <span class="fw-semibold">{{ booking.showtime.movie.title }}</span>
-                                </div>
-                                <div class="d-flex justify-content-between mb-3">
-                                    <span class="text-muted">Cinema</span>
-                                    <span>{{ booking.showtime.cinema.name }}</span>
-                                </div>
-                                <div class="d-flex justify-content-between mb-3">
-                                    <span class="text-muted">Date & Time</span>
-                                    <span>{{ booking.showtime.show_date.strftime('%b %d, %Y') }} | {{ booking.showtime.show_time.strftime('%I:%M %p') }}</span>
-                                </div>
-                                <div class="d-flex justify-content-between mb-3">
-                                    <span class="text-muted">Tickets</span>
-                                    <span>{{ booking.num_tickets }}</span>
-                                </div>
-                                {% if booking.seat_numbers %}
-                                <div class="d-flex justify-content-between mb-3">
-                                    <span class="text-muted">Seats</span>
-                                    <span>{{ booking.seat_numbers }}</span>
-                                </div>
-                                {% endif %}
+        <div class="success-card">
+            <!-- Header -->
+            <div class="success-header">
+                <div class="success-icon">✓</div>
+                <h1>Payment Successful!</h1>
+                <p>Your booking has been confirmed</p>
+            </div>
+
+            <!-- Receipt Body -->
+            <div class="receipt-body">
+                <!-- Booking Reference -->
+                <div class="receipt-section">
+                    <div class="receipt-title">Booking Information</div>
+                    <div class="receipt-item">
+                        <span class="receipt-label">Booking Reference</span>
+                        <span class="receipt-value">{{ booking.booking_reference }}</span>
+                    </div>
+                    <div class="receipt-item">
+                        <span class="receipt-label">Status</span>
+                        <span class="receipt-value">
+                            <span class="status-badge">✓ Confirmed</span>
+                        </span>
+                    </div>
+                </div>
+
+                <div class="divider"></div>
+
+                <!-- Event Details -->
+                {% if booking_type == 'movie' %}
+                    <div class="receipt-section">
+                        <div class="receipt-title">Movie Ticket</div>
+                        <div class="movie-details">
+                            {% if booking.showtime.movie.poster_image %}
+                                <img src="{{ url_for('static', filename='uploads/' + booking.showtime.movie.poster_image) }}" alt="Movie Poster" class="movie-poster">
                             {% else %}
-                                <div class="d-flex justify-content-between mb-3">
-                                    <span class="text-muted">Route</span>
-                                    <span class="fw-semibold">{{ booking.schedule.route.origin }} - {{ booking.schedule.route.destination }}</span>
-                                </div>
-                                <div class="d-flex justify-content-between mb-3">
-                                    <span class="text-muted">Travel Date</span>
-                                    <span>{{ booking.schedule.travel_date.strftime('%b %d, %Y') }}</span>
-                                </div>
-                                <div class="d-flex justify-content-between mb-3">
-                                    <span class="text-muted">Departure</span>
-                                    <span>{{ booking.schedule.route.departure_time.strftime('%I:%M %p') }}</span>
-                                </div>
-                                <div class="d-flex justify-content-between mb-3">
-                                    <span class="text-muted">Passengers</span>
-                                    <span>{{ booking.num_tickets }}</span>
-                                </div>
+                                <div class="movie-poster" style="display: flex; align-items: center; justify-content: center; background: var(--secondary); color: white; font-size: 32px;">🎬</div>
                             {% endif %}
-                            
-                            <hr>
-                            
-                            <div class="d-flex justify-content-between">
-                                <span class="fw-bold">Amount Paid</span>
-                                <span class="fw-bold fs-5" style="color: var(--primary);">₱{{ "%.2f"|format(booking.total_amount) }}</span>
+                            <div class="movie-info">
+                                <h4>{{ booking.showtime.movie.title }}</h4>
+                                <p><strong>Cinema:</strong> {{ booking.showtime.cinema.name }}</p>
+                                <p><strong>Date:</strong> {{ booking.showtime.show_date.strftime('%B %d, %Y') }}</p>
+                                <p><strong>Time:</strong> {{ booking.showtime.show_time.strftime('%I:%M %p') }}</p>
+                                <p><strong>Tickets:</strong> {{ booking.num_tickets }} x ₱{{ "%.2f"|format(booking.showtime.price) }}</p>
+                                {% if booking.seat_numbers %}
+                                <p><strong>Seats:</strong> {{ booking.seat_numbers }}</p>
+                                {% endif %}
                             </div>
-                        </div>
-                        
-                        <!-- Actions -->
-                        <div class="d-flex gap-3 justify-content-center">
-                            <a href="{{ url_for('dashboard') }}" class="btn btn-primary">
-                                <i class="bi bi-grid me-2"></i>View My Bookings
-                            </a>
-                            <a href="{{ url_for('index') }}" class="btn btn-outline-secondary">
-                                <i class="bi bi-house me-2"></i>Back to Home
-                            </a>
-                        </div>
-                        
-                        <!-- Print/Download -->
-                        <div class="mt-4">
-                            <button class="btn btn-link text-muted" onclick="window.print()">
-                                <i class="bi bi-printer me-2"></i>Print Ticket
-                            </button>
                         </div>
                     </div>
+                {% else %}
+                    <div class="receipt-section">
+                        <div class="receipt-title">Bus Ticket</div>
+                        <div class="booking-details">
+                            <div class="detail-grid">
+                                <div class="detail-item">
+                                    <span class="detail-label">Route</span>
+                                    <span class="detail-value">{{ booking.schedule.route.origin }} → {{ booking.schedule.route.destination }}</span>
+                                </div>
+                                <div class="detail-item">
+                                    <span class="detail-label">Travel Date</span>
+                                    <span class="detail-value">{{ booking.schedule.travel_date.strftime('%b %d, %Y') }}</span>
+                                </div>
+                                <div class="detail-item">
+                                    <span class="detail-label">Departure</span>
+                                    <span class="detail-value">{{ booking.schedule.route.departure_time.strftime('%I:%M %p') }}</span>
+                                </div>
+                                <div class="detail-item">
+                                    <span class="detail-label">Arrival</span>
+                                    <span class="detail-value">{{ booking.schedule.route.arrival_time.strftime('%I:%M %p') }}</span>
+                                </div>
+                                <div class="detail-item">
+                                    <span class="detail-label">Bus Type</span>
+                                    <span class="detail-value">{{ booking.schedule.route.bus_type or 'Standard' }}</span>
+                                </div>
+                                <div class="detail-item">
+                                    <span class="detail-label">Passengers</span>
+                                    <span class="detail-value">{{ booking.num_tickets }}</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                {% endif %}
+
+                <div class="divider"></div>
+
+                <!-- Payment Summary -->
+                <div class="receipt-section">
+                    <div class="receipt-title">Payment Summary</div>
+                    <div class="receipt-item">
+                        <span class="receipt-label">Subtotal</span>
+                        <span class="receipt-value">₱{{ "%.2f"|format(booking.total_amount) }}</span>
+                    </div>
+                    <div class="receipt-item">
+                        <span class="receipt-label">Payment Method</span>
+                        <span class="receipt-value">{{ booking.payment_method|capitalize }} E-wallet</span>
+                    </div>
+                    <div class="receipt-item">
+                        <span class="receipt-label">Reference</span>
+                        <span class="receipt-value" style="font-size: 12px;">{{ booking.payment_reference }}</span>
+                    </div>
+                    <div class="receipt-item">
+                        <span class="receipt-label" style="font-size: 16px; font-weight: 600;">Total Amount Paid</span>
+                        <span class="receipt-value receipt-amount">₱{{ "%.2f"|format(booking.total_amount) }}</span>
+                    </div>
+                </div>
+
+                <div class="divider"></div>
+
+                <!-- QR Code Section (for ticketing) -->
+                <div class="qr-section">
+                    <div style="font-size: 12px; color: var(--gray-600); margin-bottom: 12px;">Your Booking Reference Code</div>
+                    <div class="qr-code">
+                        <div style="text-align: center;">
+                            <div style="font-weight: bold; font-size: 16px;">{{ booking.booking_reference }}</div>
+                            <div style="font-size: 11px; margin-top: 4px;">Show at entrance</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Actions -->
+                <div class="action-buttons">
+                    <a href="{{ url_for('dashboard') }}" class="btn btn-primary">
+                        📋 View My Bookings
+                    </a>
+                    <a href="{{ url_for('index') }}" class="btn btn-secondary">
+                        🏠 Back to Home
+                    </a>
+                </div>
+
+                <!-- Print Button -->
+                <div style="text-align: center;">
+                    <button type="button" class="print-btn" onclick="window.print()">
+                        🖨️ Print Receipt
+                    </button>
+                </div>
+
+                <!-- Confirmation Message -->
+                <div style="background: #e8f5e9; border-radius: 8px; padding: 16px; margin-top: 20px; font-size: 13px; color: #2e7d32; border-left: 4px solid #4caf50;">
+                    <strong>✓ Confirmation email has been sent</strong>
+                    <p style="margin: 8px 0 0 0;">A confirmation email with your booking details has been sent to your registered email address. You can use your booking reference to check in at the venue.</p>
                 </div>
             </div>
         </div>
     </div>
-</section>
+</div>
 {% endblock %}

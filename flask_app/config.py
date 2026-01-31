@@ -8,10 +8,10 @@ class Config:
     SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL') or 'sqlite:///ticketing.db'
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     
-    # Stripe Configuration
-    STRIPE_PUBLIC_KEY = os.environ.get('STRIPE_PUBLIC_KEY') or 'pk_test_your_stripe_public_key'
-    STRIPE_SECRET_KEY = os.environ.get('STRIPE_SECRET_KEY') or 'sk_test_your_stripe_secret_key'
-    STRIPE_WEBHOOK_SECRET = os.environ.get('STRIPE_WEBHOOK_SECRET') or 'whsec_your_webhook_secret'
+    # PayMongo Configuration
+    PAYMONGO_PUBLIC_KEY = os.environ.get('PAYMONGO_PUBLIC_KEY') or 'pk_test_PA4RzhxD9BadaUFoTkaaTLbf'
+    PAYMONGO_SECRET_KEY = os.environ.get('PAYMONGO_SECRET_KEY') or 'sk_test_boUkkKYfbPnRVZMrVE13moQo'
+    PAYMONGO_API_URL = 'https://api.paymongo.com/v1'
     
     # Upload Configuration
     UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static', 'uploads')

@@ -1,6 +1,6 @@
 """
 Movie + Bus Ticketing Platform
-Flask Application with SQLAlchemy, Stripe Payments, and Admin Panel
+Flask Application with SQLAlchemy, PayMongo E-Wallet Payments, and Admin Panel
 """
 
 import os
@@ -11,11 +11,12 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 from datetime import datetime, timedelta
 from functools import wraps
-import stripe
+import requests
 import google.generativeai as genai
 from dotenv import load_dotenv
 from itsdangerous import URLSafeTimedSerializer, SignatureExpired, BadSignature
 from flask_mail import Mail, Message
+import base64
 
 # Load environment variables from .env file
 load_dotenv()
@@ -28,8 +29,10 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['UPLOAD_FOLDER'] = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static', 'uploads')
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
 
-# Stripe configuration
-stripe.api_key = os.environ.get('STRIPE_SECRET_KEY', 'sk_test_your_key_here')
+# PayMongo configuration
+PAYMONGO_SECRET_KEY = os.environ.get('PAYMONGO_SECRET_KEY', 'sk_test_boUkkKYfbPnRVZMrVE13moQo')
+PAYMONGO_PUBLIC_KEY = os.environ.get('PAYMONGO_PUBLIC_KEY', 'pk_test_PA4RzhxD9BadaUFoTkaaTLbf')
+PAYMONGO_API_URL = 'https://api.paymongo.com/v1'
 
 # Google Generative AI configuration
 GOOGLE_API_KEY = os.environ.get('GOOGLE_API_KEY', 'AIzaSyBDlPAFKwK7D3x7g99r0emxNjbqm1m1INY')
@@ -422,15 +425,17 @@ def payment(booking_type, booking_id):
     return render_template('payment/checkout.html', 
                          booking=booking, 
                          booking_type=booking_type,
-                         stripe_public_key=os.environ.get('STRIPE_PUBLIC_KEY', 'pk_test_your_key_here'))
+                         paymongo_public_key=PAYMONGO_PUBLIC_KEY)
 
 
-@app.route('/create-payment-intent', methods=['POST'])
+@app.route('/create-paymongo-source', methods=['POST'])
 @login_required
-def create_payment_intent():
+def create_paymongo_source():
+    """Create a PayMongo source for e-wallet payment"""
     data = request.get_json()
     booking_type = data.get('booking_type')
     booking_id = data.get('booking_id')
+    payment_method = data.get('payment_method', 'gcash')  # gcash, paymaya, etc.
 
     if booking_type == 'movie':
         booking = MovieBooking.query.get_or_404(booking_id)
@@ -438,23 +443,53 @@ def create_payment_intent():
         booking = BusBooking.query.get_or_404(booking_id)
 
     try:
-        intent = stripe.PaymentIntent.create(
-            amount=int(booking.total_amount * 100),  # Stripe expects cents
-            currency='usd',
-            metadata={
-                'booking_type': booking_type,
-                'booking_id': booking_id,
-                'booking_reference': booking.booking_reference
+        # Create PayMongo source for e-wallet
+        auth_string = base64.b64encode(f'{PAYMONGO_SECRET_KEY}:'.encode()).decode()
+        headers = {
+            'Authorization': f'Basic {auth_string}',
+            'Content-Type': 'application/json'
+        }
+        
+        # Map payment methods to PayMongo types
+        source_types = {
+            'gcash': 'gcash',
+            'paymaya': 'paymaya'
+        }
+        
+        source_type = source_types.get(payment_method, 'gcash')
+        
+        payload = {
+            'data': {
+                'attributes': {
+                    'amount': int(booking.total_amount * 100),  # in cents
+                    'currency': 'PHP',
+                    'type': source_type,
+                    'redirect': {
+                        'success': url_for('payment_success', booking_type=booking_type, booking_id=booking_id, _external=True),
+                        'failed': url_for('payment', booking_type=booking_type, booking_id=booking_id, _external=True)
+                    }
+                }
             }
-        )
-
-        # Persist payment method/reference for tracking
-        booking.payment_method = 'card'
-        booking.payment_reference = intent.id
-        booking.stripe_payment_id = intent.id  # keep for compatibility
+        }
+        
+        response = requests.post(f'{PAYMONGO_API_URL}/sources', json=payload, headers=headers)
+        
+        if response.status_code != 201:
+            return jsonify({'error': 'Failed to create payment source'}), 400
+        
+        source_data = response.json()['data']
+        source_id = source_data['id']
+        
+        # Store payment reference
+        booking.payment_method = payment_method
+        booking.payment_reference = source_id
         db.session.commit()
-
-        return jsonify({'clientSecret': intent.client_secret})
+        
+        return jsonify({
+            'sourceId': source_id,
+            'redirectUrl': source_data['attributes']['redirect']['checkout_url']
+        })
+        
     except Exception as e:
         return jsonify({'error': str(e)}), 400
 
@@ -462,64 +497,52 @@ def create_payment_intent():
 @app.route('/payment-success/<booking_type>/<int:booking_id>')
 @login_required
 def payment_success(booking_type, booking_id):
-    payment_intent_id = request.args.get('payment_intent')
-
+    source_id = request.args.get('source_id')
+    
     if booking_type == 'movie':
         booking = MovieBooking.query.get_or_404(booking_id)
-        booking.payment_status = 'completed'
-        booking.payment_method = 'card'
-        if payment_intent_id:
-            booking.payment_reference = payment_intent_id
-            booking.stripe_payment_id = payment_intent_id
-        # Update available seats
-        showtime = booking.showtime
-        showtime.available_seats -= booking.num_tickets
     else:
         booking = BusBooking.query.get_or_404(booking_id)
+    
+    # Verify payment with PayMongo if source_id is provided
+    if source_id:
+        try:
+            auth_string = base64.b64encode(f'{PAYMONGO_SECRET_KEY}:'.encode()).decode()
+            headers = {
+                'Authorization': f'Basic {auth_string}',
+                'Content-Type': 'application/json'
+            }
+            
+            response = requests.get(f'{PAYMONGO_API_URL}/sources/{source_id}', headers=headers)
+            
+            if response.status_code == 200:
+                source_data = response.json()['data']
+                if source_data['attributes']['status'] == 'chargeable':
+                    booking.payment_status = 'completed'
+                else:
+                    booking.payment_status = 'pending'
+            else:
+                booking.payment_status = 'pending'
+        except Exception as e:
+            booking.payment_status = 'pending'
+    else:
         booking.payment_status = 'completed'
-        booking.payment_method = 'card'
-        if payment_intent_id:
-            booking.payment_reference = payment_intent_id
-            booking.stripe_payment_id = payment_intent_id
-        # Update available seats
-        schedule = booking.schedule
-        schedule.available_seats -= booking.num_tickets
-
+    
+    # Update available seats only if payment is completed
+    if booking.payment_status == 'completed':
+        if booking_type == 'movie':
+            showtime = booking.showtime
+            showtime.available_seats -= booking.num_tickets
+        else:
+            schedule = booking.schedule
+            schedule.available_seats -= booking.num_tickets
+    
     db.session.commit()
-
+    
     return render_template('payment/success.html', booking=booking, booking_type=booking_type)
 
 
-@app.route('/payment-bank-pending', methods=['POST'])
-@login_required
-def payment_bank_pending():
-    data = request.get_json()
-    booking_type = data.get('booking_type')
-    booking_id = data.get('booking_id')
-    payer_name = data.get('payer_name')
 
-    if booking_type == 'movie':
-        booking = MovieBooking.query.get_or_404(booking_id)
-    else:
-        booking = BusBooking.query.get_or_404(booking_id)
-
-    if booking.user_id != current_user.id:
-        return jsonify({'error': 'Unauthorized'}), 403
-
-    # Generate a bank reference
-    bank_ref = f'BANK-{booking_id}-{int(datetime.now().timestamp())}'
-
-    # Mark as pending bank transfer and store method/reference
-    booking.payment_status = 'pending'
-    booking.payment_method = 'bank'
-    booking.payment_reference = bank_ref
-    booking.stripe_payment_id = bank_ref  # optional, for backward compatibility
-
-    db.session.commit()
-
-    flash('Bank transfer recorded. Your booking will be confirmed once payment is verified.', 'info')
-
-    return jsonify({'success': True, 'reference_number': bank_ref})
 
 
 @app.route('/get-booked-seats', methods=['POST'])
