@@ -188,6 +188,42 @@ class BusBooking(db.Model):
     booking_reference = db.Column(db.String(20), unique=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
+
+class Transaction(db.Model):
+    """Transaction table to track all payment transactions"""
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    booking_type = db.Column(db.String(20), nullable=False)  # 'movie' or 'bus'
+    booking_id = db.Column(db.Integer, nullable=False)  # Reference to MovieBooking or BusBooking
+    
+    # Payment details
+    amount = db.Column(db.Float, nullable=False)
+    currency = db.Column(db.String(10), default='PHP')
+    payment_method = db.Column(db.String(50), nullable=False)  # 'gcash', 'paymaya', 'bank', etc.
+    payment_status = db.Column(db.String(20), default='pending')  # pending, completed, failed, cancelled
+    
+    # PayMongo details
+    paymongo_source_id = db.Column(db.String(255), unique=True)
+    paymongo_payment_id = db.Column(db.String(255))
+    
+    # Transaction reference
+    transaction_reference = db.Column(db.String(50), unique=True)
+    
+    # Error tracking
+    error_message = db.Column(db.Text)
+    error_code = db.Column(db.String(50))
+    
+    # Timestamps
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    completed_at = db.Column(db.DateTime)
+    
+    # User relationship for queries
+    user = db.relationship('User', backref='transactions')
+    
+    def __repr__(self):
+        return f'<Transaction {self.transaction_reference} - {self.payment_status}>'
+
 # ==================== HELPER FUNCTIONS ====================
 
 @login_manager.user_loader
@@ -475,14 +511,44 @@ def create_paymongo_source():
         response = requests.post(f'{PAYMONGO_API_URL}/sources', json=payload, headers=headers)
         
         if response.status_code != 201:
+            # Create error transaction record
+            trans_ref = f"TXN-{booking_type}-{booking_id}-{int(datetime.utcnow().timestamp())}"
+            error_transaction = Transaction(
+                user_id=current_user.id,
+                booking_type=booking_type,
+                booking_id=booking_id,
+                amount=booking.total_amount,
+                payment_method=payment_method,
+                payment_status='failed',
+                transaction_reference=trans_ref,
+                error_message='Failed to create payment source',
+                error_code=str(response.status_code)
+            )
+            db.session.add(error_transaction)
+            db.session.commit()
             return jsonify({'error': 'Failed to create payment source'}), 400
         
         source_data = response.json()['data']
         source_id = source_data['id']
         
-        # Store payment reference
+        # Store payment reference in booking
         booking.payment_method = payment_method
         booking.payment_reference = source_id
+        
+        # Create pending transaction record
+        trans_ref = f"TXN-{booking_type}-{booking_id}-{int(datetime.utcnow().timestamp())}"
+        transaction = Transaction(
+            user_id=current_user.id,
+            booking_type=booking_type,
+            booking_id=booking_id,
+            amount=booking.total_amount,
+            currency='PHP',
+            payment_method=payment_method,
+            payment_status='pending',
+            paymongo_source_id=source_id,
+            transaction_reference=trans_ref
+        )
+        db.session.add(transaction)
         db.session.commit()
         
         return jsonify({
@@ -491,6 +557,20 @@ def create_paymongo_source():
         })
         
     except Exception as e:
+        # Create error transaction record
+        trans_ref = f"TXN-{booking_type}-{booking_id}-{int(datetime.utcnow().timestamp())}"
+        error_transaction = Transaction(
+            user_id=current_user.id,
+            booking_type=booking_type,
+            booking_id=booking_id,
+            amount=booking.total_amount,
+            payment_method=payment_method,
+            payment_status='failed',
+            transaction_reference=trans_ref,
+            error_message=str(e)
+        )
+        db.session.add(error_transaction)
+        db.session.commit()
         return jsonify({'error': str(e)}), 400
 
 
@@ -503,6 +583,9 @@ def payment_success(booking_type, booking_id):
         booking = MovieBooking.query.get_or_404(booking_id)
     else:
         booking = BusBooking.query.get_or_404(booking_id)
+    
+    # Find or update the transaction record
+    transaction = Transaction.query.filter_by(paymongo_source_id=source_id).first() if source_id else None
     
     # Verify payment with PayMongo if source_id is provided
     if source_id:
@@ -519,14 +602,29 @@ def payment_success(booking_type, booking_id):
                 source_data = response.json()['data']
                 if source_data['attributes']['status'] == 'chargeable':
                     booking.payment_status = 'completed'
+                    if transaction:
+                        transaction.payment_status = 'completed'
+                        transaction.completed_at = datetime.utcnow()
+                        transaction.paymongo_payment_id = source_data.get('id')
                 else:
                     booking.payment_status = 'pending'
+                    if transaction:
+                        transaction.payment_status = 'pending'
             else:
                 booking.payment_status = 'pending'
+                if transaction:
+                    transaction.payment_status = 'pending'
+                    transaction.error_code = str(response.status_code)
         except Exception as e:
             booking.payment_status = 'pending'
+            if transaction:
+                transaction.payment_status = 'pending'
+                transaction.error_message = str(e)
     else:
         booking.payment_status = 'completed'
+        if transaction:
+            transaction.payment_status = 'completed'
+            transaction.completed_at = datetime.utcnow()
     
     # Update available seats only if payment is completed
     if booking.payment_status == 'completed':
